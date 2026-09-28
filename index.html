@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>QRally Light - Web PoC</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            background-color: #000000;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        /* Large Simulated LED Indicator Panel */
+        #led-panel {
+            width: 100%;
+            height: 55vh;
+            border-radius: 20px;
+            background-color: #1a1a1a;
+            border: 4px solid #333333;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: background-color 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 0 10px rgba(0,0,0,0.8);
+        }
+
+        /* Statuses */
+        #led-panel.state-on {
+            background-color: #00ff66;
+            box-shadow: 0 0 50px #00ff66;
+            border-color: #ffffff;
+        }
+
+        #led-panel.state-off {
+            background-color: #0d0d0d;
+            box-shadow: none;
+            border-color: #222222;
+        }
+
+        #led-panel.state-flash {
+            background-color: #ff0033;
+            box-shadow: 0 0 60px #ff0033;
+            border-color: #ffffff;
+        }
+
+        #panel-text {
+            font-size: 2.5rem;
+            font-weight: 900;
+            letter-spacing: 2px;
+            color: #000000;
+            text-transform: uppercase;
+        }
+
+        #led-panel.state-off #panel-text {
+            color: #333333;
+        }
+
+        /* Telemetry & Debug Dashboard */
+        .telemetry-card {
+            background: #111111;
+            border: 1px solid #222222;
+            border-radius: 12px;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+
+        .telemetry-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+
+        .telemetry-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .label { color: #888888; }
+        .value { color: #ffff00; font-weight: bold; }
+
+        /* Controls */
+        .btn-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        button {
+            background-color: #222222;
+            color: #ffffff;
+            border: 1px solid #444444;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:active {
+            background-color: #333333;
+        }
+
+        button.primary {
+            background-color: #0066cc;
+            border-color: #0088ff;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Main Visual Output -->
+    <div id="led-panel" class="state-off">
+        <div id="panel-text">OFF ROUTE</div>
+    </div>
+
+    <!-- Live Metrics -->
+    <div class="telemetry-card">
+        <div class="telemetry-row">
+            <span class="label">GPS Status:</span>
+            <span class="value" id="gps-status">Awaiting Start</span>
+        </div>
+        <div class="telemetry-row">
+            <span class="label">Min Dist to Route:</span>
+            <span class="value" id="dist-val">-- m</span>
+        </div>
+        <div class="telemetry-row">
+            <span class="label">Corridor Threshold:</span>
+            <span class="value" id="corridor-val">20.0 m</span>
+        </div>
+        <div class="telemetry-row">
+            <span class="label">Speed:</span>
+            <span class="value" id="speed-val">0.0 mph</span>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="btn-group">
+        <button id="btn-toggle" class="primary" onclick="toggleGPS()">START TRACKING</button>
+        <button onclick="simulateDeviation()">SIMULATE DEV</button>
+    </div>
+
+    <script>
+        // --- 1. SAMPLE ROUTE CORRIDOR WAYPOINTS (LAT, LON) ---
+        // Replace these coordinates with a local street or route segment
+        const testRoute = [
+            { lat: 52.146894, lon: -4.056917 },
+            { lat: 53.123800, lon: -3.987100 },
+            { lat: 53.124200, lon: -3.986500 },
+            { lat: 53.124800, lon: -3.985900 }
+        ];
+
+        const CORRIDOR_RADIUS_METERS = 20.0; // Allowed distance off path
+        let watchId = null;
+        let isOnRoute = false;
+        let isSimulating = false;
+
+        const ledPanel = document.getElementById('led-panel');
+        const panelText = document.getElementById('panel-text');
+        const gpsStatus = document.getElementById('gps-status');
+        const distVal = document.getElementById('dist-val');
+        const speedVal = document.getElementById('speed-val');
+
+        // --- 2. GPS TRACKING TOGGLE ---
+        function toggleGPS() {
+            const btn = document.getElementById('btn-toggle');
+            if (watchId === null) {
+                if ("geolocation" in navigator) {
+                    watchId = navigator.geolocation.watchPosition(
+                        processPosition, 
+                        handleError, 
+                        { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+                    );
+                    gpsStatus.innerText = "Active (High Accuracy)";
+                    gpsStatus.style.color = "#00ff66";
+                    btn.innerText = "STOP TRACKING";
+                    btn.style.backgroundColor = "#cc0000";
+                } else {
+                    alert("Geolocation is not supported by your browser.");
+                }
+            } else {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+                gpsStatus.innerText = "Stopped";
+                gpsStatus.style.color = "#ff3333";
+                btn.innerText = "START TRACKING";
+                btn.className = "primary";
+                setPanelState('off', 'STANDBY');
+            }
+        }
+
+        // --- 3. POSITION PROCESSING & DISTANCE LOGIC ---
+        function processPosition(pos) {
+            if (isSimulating) return;
+
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            const speed = pos.coords.speed ? (pos.coords.speed * 2.23694).toFixed(1) : 0; // Convert m/s to mph
+
+            speedVal.innerText = speed + " mph";
+
+            // Find shortest distance to any waypoint segment on the route
+            let minDist = Infinity;
+            for (let i = 0; i < testRoute.length; i++) {
+                let d = haversineDistance(lat, lon, testRoute[i].lat, testRoute[i].lon);
+                if (d < minDist) minDist = d;
+            }
+
+            distVal.innerText = minDist.toFixed(1) + " m";
+
+            // State Machine
+            if (minDist <= CORRIDOR_RADIUS_METERS) {
+                setPanelState('on', 'ON ROUTE');
+            } else {
+                if (isOnRoute) {
+                    triggerOffRouteSequence();
+                } else {
+                    setPanelState('off', 'OFF ROUTE');
+                }
+            }
+        }
+
+        // --- 4. PANEL STATE CONTROLLER ---
+        function setPanelState(state, text) {
+            ledPanel.className = 'state-' + state;
+            panelText.innerText = text;
+            isOnRoute = (state === 'on');
+        }
+
+        function triggerOffRouteSequence() {
+            isOnRoute = false;
+            // Rapid Alert Flash
+            ledPanel.className = 'state-flash';
+            panelText.innerText = 'DEV WARNING!';
+            
+            setTimeout(() => {
+                setPanelState('off', 'OFF ROUTE');
+            }, 1200);
+        }
+
+        // Simulation handler for testing visual sequence without moving
+        function simulateDeviation() {
+            isSimulating = true;
+            setPanelState('on', 'ON ROUTE');
+            setTimeout(() => {
+                triggerOffRouteSequence();
+                setTimeout(() => { isSimulating = false; }, 2000);
+            }, 2500);
+        }
+
+        // --- 5. HAVERSINE DISTANCE FORMULA (METERS) ---
+        function haversineDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371000; // Radius of Earth in meters
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        function handleError(err) {
+            gpsStatus.innerText = "Error (" + err.code + "): " + err.message;
+            gpsStatus.style.color = "#ff0033";
+        }
+    </script>
+</body>
+</html>
