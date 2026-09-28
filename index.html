@@ -3,15 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>QRally Light - Web PoC</title>
+    <title>QRally Light - GPX PoC</title>
     <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            user-select: none;
-        }
-
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
         body {
             background-color: #000000;
             color: #ffffff;
@@ -20,14 +14,13 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            padding: 20px;
+            padding: 15px;
             overflow: hidden;
         }
 
-        /* Large Simulated LED Indicator Panel */
         #led-panel {
             width: 100%;
-            height: 55vh;
+            height: 48vh;
             border-radius: 20px;
             background-color: #1a1a1a;
             border: 4px solid #333333;
@@ -36,165 +29,144 @@
             justify-content: center;
             align-items: center;
             transition: background-color 0.2s ease, box-shadow 0.2s ease;
-            box-shadow: 0 0 10px rgba(0,0,0,0.8);
         }
 
-        /* Statuses */
-        #led-panel.state-on {
-            background-color: #00ff66;
-            box-shadow: 0 0 50px #00ff66;
-            border-color: #ffffff;
-        }
-
-        #led-panel.state-off {
-            background-color: #0d0d0d;
-            box-shadow: none;
-            border-color: #222222;
-        }
-
-        #led-panel.state-flash {
-            background-color: #ff0033;
-            box-shadow: 0 0 60px #ff0033;
-            border-color: #ffffff;
-        }
+        #led-panel.state-on { background-color: #00ff66; box-shadow: 0 0 50px #00ff66; border-color: #ffffff; }
+        #led-panel.state-off { background-color: #0d0d0d; box-shadow: none; border-color: #222222; }
+        #led-panel.state-flash { background-color: #ff0033; box-shadow: 0 0 60px #ff0033; border-color: #ffffff; }
 
         #panel-text {
-            font-size: 2.5rem;
+            font-size: 2.2rem;
             font-weight: 900;
             letter-spacing: 2px;
             color: #000000;
             text-transform: uppercase;
         }
+        #led-panel.state-off #panel-text { color: #333333; }
 
-        #led-panel.state-off #panel-text {
-            color: #333333;
-        }
-
-        /* Telemetry & Debug Dashboard */
         .telemetry-card {
             background: #111111;
             border: 1px solid #222222;
             border-radius: 12px;
-            padding: 15px;
+            padding: 12px;
             font-family: monospace;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
         }
 
-        .telemetry-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 6px;
-        }
-
-        .telemetry-row:last-child {
-            margin-bottom: 0;
-        }
-
+        .telemetry-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
         .label { color: #888888; }
         .value { color: #ffff00; font-weight: bold; }
 
-        /* Controls */
-        .btn-group {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-
-        button {
+        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        button, label.btn {
             background-color: #222222;
             color: #ffffff;
             border: 1px solid #444444;
-            padding: 15px;
-            border-radius: 10px;
-            font-size: 1rem;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.9rem;
             font-weight: bold;
             cursor: pointer;
+            text-align: center;
         }
-
-        button:active {
-            background-color: #333333;
-        }
-
-        button.primary {
-            background-color: #0066cc;
-            border-color: #0088ff;
-        }
+        button.primary { background-color: #0066cc; border-color: #0088ff; }
+        input[type="file"] { display: none; }
     </style>
 </head>
 <body>
 
-    <!-- Main Visual Output -->
     <div id="led-panel" class="state-off">
-        <div id="panel-text">OFF ROUTE</div>
+        <div id="panel-text">NO GPX LOADED</div>
     </div>
 
-    <!-- Live Metrics -->
     <div class="telemetry-card">
-        <div class="telemetry-row">
-            <span class="label">GPS Status:</span>
-            <span class="value" id="gps-status">Awaiting Start</span>
-        </div>
-        <div class="telemetry-row">
-            <span class="label">Min Dist to Route:</span>
-            <span class="value" id="dist-val">-- m</span>
-        </div>
-        <div class="telemetry-row">
-            <span class="label">Corridor Threshold:</span>
-            <span class="value" id="corridor-val">20.0 m</span>
-        </div>
-        <div class="telemetry-row">
-            <span class="label">Speed:</span>
-            <span class="value" id="speed-val">0.0 mph</span>
-        </div>
+        <div class="telemetry-row"><span class="label">GPX Route:</span><span class="value" id="gpx-info">None</span></div>
+        <div class="telemetry-row"><span class="label">GPS Status:</span><span class="value" id="gps-status">Awaiting Start</span></div>
+        <div class="telemetry-row"><span class="label">Cross-Track Dist:</span><span class="value" id="dist-val">-- m</span></div>
+        <div class="telemetry-row"><span class="label">Speed:</span><span class="value" id="speed-val">0.0 mph</span></div>
     </div>
 
-    <!-- Action Buttons -->
     <div class="btn-group">
+        <label class="btn" for="gpx-input">LOAD GPX FILE</label>
+        <input type="file" id="gpx-input" accept=".gpx" onchange="loadGPX(event)">
         <button id="btn-toggle" class="primary" onclick="toggleGPS()">START TRACKING</button>
-        <button onclick="simulateDeviation()">SIMULATE DEV</button>
     </div>
 
     <script>
-        // --- 1. SAMPLE ROUTE CORRIDOR WAYPOINTS (LAT, LON) ---
-        // Replace these coordinates with a local street or route segment
-        const testRoute = [
-            { lat: 52.146894, lon: -4.056917 },
-            { lat: 52.131319, lon: -4.073305 },
-            { lat: 52.119498, lon: -4.080025 },
-            { lat: 52.147307, lon: -4.111806 }
-        ];
-
-        const CORRIDOR_RADIUS_METERS = 20.0; // Allowed distance off path
+        let testRoute = [];
+        const CORRIDOR_RADIUS_METERS = 20.0;
         let watchId = null;
         let isOnRoute = false;
-        let isSimulating = false;
+        let wakeLock = null;
 
         const ledPanel = document.getElementById('led-panel');
         const panelText = document.getElementById('panel-text');
         const gpsStatus = document.getElementById('gps-status');
         const distVal = document.getElementById('dist-val');
         const speedVal = document.getElementById('speed-val');
+        const gpxInfo = document.getElementById('gpx-info');
 
-        // --- 2. GPS TRACKING TOGGLE ---
-        function toggleGPS() {
+        // --- 1. PARSE GPX XML FILE ---
+        function loadGPX(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const xmlText = e.target.result;
+                const parser = new DOMParser(); // Parse XML using native browser DOMParser
+                const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+                
+                testRoute = [];
+                // Support both <trkpt> (Tracks) and <rtept> (Routes)
+                const points = xmlDoc.querySelectorAll("trkpt, rtept");
+                
+                points.forEach(pt => {
+                    testRoute.push({
+                        lat: parseFloat(pt.getAttribute("lat")),
+                        lon: parseFloat(pt.getAttribute("lon"))
+                    });
+                });
+
+                if (testRoute.length > 0) {
+                    gpxInfo.innerText = `${testRoute.length} pts loaded`;
+                    gpxInfo.style.color = "#00ff66";
+                    setPanelState('off', 'READY');
+                } else {
+                    alert("No valid trackpoints found in GPX file.");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // --- 2. GPS WATCH & SCREEN WAKE LOCK ---
+        async function toggleGPS() {
             const btn = document.getElementById('btn-toggle');
             if (watchId === null) {
+                if (testRoute.length === 0) {
+                    alert("Please load a GPX route first!");
+                    return;
+                }
+
+                // Prevent phone screen dimming
+                if ('wakeLock' in navigator) {
+                    try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e){}
+                }
+
                 if ("geolocation" in navigator) {
                     watchId = navigator.geolocation.watchPosition(
-                        processPosition, 
-                        handleError, 
+                        processPosition, handleError, 
                         { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
                     );
-                    gpsStatus.innerText = "Active (High Accuracy)";
+                    gpsStatus.innerText = "Active";
                     gpsStatus.style.color = "#00ff66";
-                    btn.innerText = "STOP TRACKING";
+                    btn.innerText = "STOP";
                     btn.style.backgroundColor = "#cc0000";
-                } else {
-                    alert("Geolocation is not supported by your browser.");
                 }
             } else {
                 navigator.geolocation.clearWatch(watchId);
                 watchId = null;
+                if (wakeLock) { wakeLock.release(); wakeLock = null; }
                 gpsStatus.innerText = "Stopped";
                 gpsStatus.style.color = "#ff3333";
                 btn.innerText = "START TRACKING";
@@ -203,26 +175,21 @@
             }
         }
 
-        // --- 3. POSITION PROCESSING & DISTANCE LOGIC ---
+        // --- 3. LINE-SEGMENT CROSS-TRACK DISTANCE ---
         function processPosition(pos) {
-            if (isSimulating) return;
-
             const lat = pos.coords.latitude;
             const lon = pos.coords.longitude;
-            const speed = pos.coords.speed ? (pos.coords.speed * 2.23694).toFixed(1) : 0; // Convert m/s to mph
-
+            const speed = pos.coords.speed ? (pos.coords.speed * 2.23694).toFixed(1) : 0;
             speedVal.innerText = speed + " mph";
 
-            // Find shortest distance to any waypoint segment on the route
             let minDist = Infinity;
-            for (let i = 0; i < testRoute.length; i++) {
-                let d = haversineDistance(lat, lon, testRoute[i].lat, testRoute[i].lon);
+            for (let i = 0; i < testRoute.length - 1; i++) {
+                let d = distanceToSegment(lat, lon, testRoute[i].lat, testRoute[i].lon, testRoute[i+1].lat, testRoute[i+1].lon);
                 if (d < minDist) minDist = d;
             }
 
             distVal.innerText = minDist.toFixed(1) + " m";
 
-            // State Machine
             if (minDist <= CORRIDOR_RADIUS_METERS) {
                 setPanelState('on', 'ON ROUTE');
             } else {
@@ -234,7 +201,6 @@
             }
         }
 
-        // --- 4. PANEL STATE CONTROLLER ---
         function setPanelState(state, text) {
             ledPanel.className = 'state-' + state;
             panelText.innerText = text;
@@ -243,39 +209,40 @@
 
         function triggerOffRouteSequence() {
             isOnRoute = false;
-            // Rapid Alert Flash
             ledPanel.className = 'state-flash';
             panelText.innerText = 'DEV WARNING!';
-            
-            setTimeout(() => {
-                setPanelState('off', 'OFF ROUTE');
-            }, 1200);
+            setTimeout(() => { setPanelState('off', 'OFF ROUTE'); }, 1200);
         }
 
-        // Simulation handler for testing visual sequence without moving
-        function simulateDeviation() {
-            isSimulating = true;
-            setPanelState('on', 'ON ROUTE');
-            setTimeout(() => {
-                triggerOffRouteSequence();
-                setTimeout(() => { isSimulating = false; }, 2000);
-            }, 2500);
+        // Geometric projection to find shortest distance from point to line segment
+        function distanceToSegment(pLat, pLon, aLat, aLon, bLat, bLon) {
+            const x = pLon, y = pLat, x1 = aLon, y1 = aLat, x2 = bLon, y2 = bLat;
+            const A = x - x1, B = y - y1, C = x2 - x1, D = y2 - y1;
+            const dot = A * C + B * D;
+            const len_sq = C * C + D * D;
+            let param = -1;
+            if (len_sq !== 0) param = dot / len_sq;
+
+            let xx, yy;
+            if (param < 0) { xx = x1; yy = y1; }
+            else if (param > 1) { xx = x2; yy = y2; }
+            else { xx = x1 + param * C; yy = y1 + param * D; }
+
+            return haversineDistance(pLat, pLon, yy, xx);
         }
 
-        // --- 5. HAVERSINE DISTANCE FORMULA (METERS) ---
         function haversineDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371000; // Radius of Earth in meters
+            const R = 6371000;
             const dLat = (lat2 - lat1) * Math.PI / 180;
             const dLon = (lon2 - lon1) * Math.PI / 180;
             const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
                       Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
                       Math.sin(dLon/2) * Math.sin(dLon/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            return R * c;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         }
 
         function handleError(err) {
-            gpsStatus.innerText = "Error (" + err.code + "): " + err.message;
+            gpsStatus.innerText = "Error: " + err.message;
             gpsStatus.style.color = "#ff0033";
         }
     </script>
