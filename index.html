@@ -3,37 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>QRally Light - GPX PoC</title>
+    <title>QRally Light - Fixed Layout</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
-        body {
+        
+        html, body {
+            height: 100%;
+            width: 100%;
             background-color: #000000;
             color: #ffffff;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            height: 100vh;
+            overflow: hidden; /* Prevents vertical scrolling */
+        }
+
+        body {
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            padding: 15px;
-            overflow: hidden;
+            padding: 12px;
         }
 
+        /* Responsive Panel */
         #led-panel {
             width: 100%;
-            height: 48vh;
-            border-radius: 20px;
+            flex: 1; /* Takes available space without pushing controls off-screen */
+            min-height: 200px;
+            border-radius: 16px;
             background-color: #1a1a1a;
-            border: 4px solid #333333;
+            border: 3px solid #333333;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
+            margin-bottom: 10px;
             transition: background-color 0.2s ease, box-shadow 0.2s ease;
         }
 
-        #led-panel.state-on { background-color: #00ff66; box-shadow: 0 0 50px #00ff66; border-color: #ffffff; }
+        #led-panel.state-on { background-color: #00ff66; box-shadow: 0 0 35px #00ff66; border-color: #ffffff; }
         #led-panel.state-off { background-color: #0d0d0d; box-shadow: none; border-color: #222222; }
-        #led-panel.state-flash { background-color: #ff0033; box-shadow: 0 0 60px #ff0033; border-color: #ffffff; }
+        #led-panel.state-flash { background-color: #ff0033; box-shadow: 0 0 45px #ff0033; border-color: #ffffff; }
 
         #panel-text {
             font-size: 2.2rem;
@@ -41,35 +49,55 @@
             letter-spacing: 2px;
             color: #000000;
             text-transform: uppercase;
+            text-align: center;
         }
         #led-panel.state-off #panel-text { color: #333333; }
 
+        /* Telemetry Card - Fixed Height */
         .telemetry-card {
             background: #111111;
             border: 1px solid #222222;
-            border-radius: 12px;
-            padding: 12px;
+            border-radius: 10px;
+            padding: 10px 12px;
             font-family: monospace;
             font-size: 0.85rem;
+            margin-bottom: 10px;
+            flex-shrink: 0;
         }
 
-        .telemetry-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+        .telemetry-row { display: flex; justify-content: space-between; margin-bottom: 3px; }
+        .telemetry-row:last-child { margin-bottom: 0; }
         .label { color: #888888; }
         .value { color: #ffff00; font-weight: bold; }
 
-        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        /* High-Visibility Button Bar */
+        .btn-group { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 8px; 
+            flex-shrink: 0;
+        }
+
         button, label.btn {
             background-color: #222222;
             color: #ffffff;
-            border: 1px solid #444444;
-            padding: 12px;
+            border: 2px solid #555555;
+            padding: 14px 5px;
             border-radius: 8px;
-            font-size: 0.9rem;
-            font-weight: bold;
+            font-size: 0.85rem;
+            font-weight: 900;
             cursor: pointer;
             text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
-        button.primary { background-color: #0066cc; border-color: #0088ff; }
+
+        button.primary, label.btn {
+            background-color: #1a3a5c;
+            border-color: #0088ff;
+            color: #ffffff;
+        }
+
         input[type="file"] { display: none; }
     </style>
 </head>
@@ -83,13 +111,13 @@
         <div class="telemetry-row"><span class="label">GPX Route:</span><span class="value" id="gpx-info">None</span></div>
         <div class="telemetry-row"><span class="label">GPS Status:</span><span class="value" id="gps-status">Awaiting Start</span></div>
         <div class="telemetry-row"><span class="label">Cross-Track Dist:</span><span class="value" id="dist-val">-- m</span></div>
-        <div class="telemetry-row"><span class="label">Speed:</span><span class="value" id="speed-val">0.0 mph</span></div>
+        <div class="telemetry-row"><span class="label">Speed:</span><span class="value" id="speed-val">0 mph</span></div>
     </div>
 
     <div class="btn-group">
-        <label class="btn" for="gpx-input">LOAD GPX FILE</label>
+        <label class="btn" for="gpx-input">📁 LOAD GPX</label>
         <input type="file" id="gpx-input" accept=".gpx" onchange="loadGPX(event)">
-        <button id="btn-toggle" class="primary" onclick="toggleGPS()">START TRACKING</button>
+        <button id="btn-toggle" class="primary" onclick="toggleGPS()">▶ START</button>
     </div>
 
     <script>
@@ -106,7 +134,6 @@
         const speedVal = document.getElementById('speed-val');
         const gpxInfo = document.getElementById('gpx-info');
 
-        // --- 1. PARSE GPX XML FILE ---
         function loadGPX(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -114,11 +141,10 @@
             const reader = new FileReader();
             reader.onload = function(e) {
                 const xmlText = e.target.result;
-                const parser = new DOMParser(); // Parse XML using native browser DOMParser
+                const parser = new DOMParser();
                 const xmlDoc = parser.parseFromString(xmlText, "text/xml");
                 
                 testRoute = [];
-                // Support both <trkpt> (Tracks) and <rtept> (Routes)
                 const points = xmlDoc.querySelectorAll("trkpt, rtept");
                 
                 points.forEach(pt => {
@@ -133,13 +159,12 @@
                     gpxInfo.style.color = "#00ff66";
                     setPanelState('off', 'READY');
                 } else {
-                    alert("No valid trackpoints found in GPX file.");
+                    alert("No valid points found in GPX file.");
                 }
             };
             reader.readAsText(file);
         }
 
-        // --- 2. GPS WATCH & SCREEN WAKE LOCK ---
         async function toggleGPS() {
             const btn = document.getElementById('btn-toggle');
             if (watchId === null) {
@@ -148,7 +173,6 @@
                     return;
                 }
 
-                // Prevent phone screen dimming
                 if ('wakeLock' in navigator) {
                     try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e){}
                 }
@@ -160,8 +184,9 @@
                     );
                     gpsStatus.innerText = "Active";
                     gpsStatus.style.color = "#00ff66";
-                    btn.innerText = "STOP";
-                    btn.style.backgroundColor = "#cc0000";
+                    btn.innerText = "⏹ STOP";
+                    btn.style.backgroundColor = "#990000";
+                    btn.style.borderColor = "#ff3333";
                 }
             } else {
                 navigator.geolocation.clearWatch(watchId);
@@ -169,17 +194,18 @@
                 if (wakeLock) { wakeLock.release(); wakeLock = null; }
                 gpsStatus.innerText = "Stopped";
                 gpsStatus.style.color = "#ff3333";
-                btn.innerText = "START TRACKING";
+                btn.innerText = "▶ START";
                 btn.className = "primary";
+                btn.style.backgroundColor = "#1a3a5c";
+                btn.style.borderColor = "#0088ff";
                 setPanelState('off', 'STANDBY');
             }
         }
 
-        // --- 3. LINE-SEGMENT CROSS-TRACK DISTANCE ---
         function processPosition(pos) {
             const lat = pos.coords.latitude;
             const lon = pos.coords.longitude;
-            const speed = pos.coords.speed ? (pos.coords.speed * 2.23694).toFixed(1) : 0;
+            const speed = pos.coords.speed ? Math.round(pos.coords.speed * 2.23694) : 0;
             speedVal.innerText = speed + " mph";
 
             let minDist = Infinity;
@@ -214,7 +240,6 @@
             setTimeout(() => { setPanelState('off', 'OFF ROUTE'); }, 1200);
         }
 
-        // Geometric projection to find shortest distance from point to line segment
         function distanceToSegment(pLat, pLon, aLat, aLon, bLat, bLon) {
             const x = pLon, y = pLat, x1 = aLon, y1 = aLat, x2 = bLon, y2 = bLat;
             const A = x - x1, B = y - y1, C = x2 - x1, D = y2 - y1;
